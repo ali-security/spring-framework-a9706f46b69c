@@ -48,6 +48,14 @@ import org.springframework.util.ReflectionUtils;
  */
 public class DirectFieldAccessor extends AbstractNestablePropertyAccessor {
 
+	/**
+	 * Effective limit for array and collection auto-growing on an auto-growing
+	 * accessor when no explicit limit has been configured; matches
+	 * {@code DataBinder.DEFAULT_AUTO_GROW_COLLECTION_LIMIT}.
+	 */
+	private static final int DEFAULT_EFFECTIVE_AUTO_GROW_COLLECTION_LIMIT = 256;
+
+
 	private final Map<String, FieldPropertyHandler> fieldMap = new HashMap<>();
 
 
@@ -88,6 +96,28 @@ public class DirectFieldAccessor extends AbstractNestablePropertyAccessor {
 	@Override
 	protected DirectFieldAccessor newNestedPropertyAccessor(Object object, String nestedPath) {
 		return new DirectFieldAccessor(object, nestedPath, this);
+	}
+
+	/**
+	 * Fall back to a limit of 256 if "autoGrowNestedPaths" is enabled and no
+	 * explicit auto-grow limit has been configured.
+	 * <p>{@code DataBinder.initDirectFieldAccess()} creates an auto-growing
+	 * DirectFieldAccessor (the binder's "autoGrowNestedPaths" default is
+	 * {@code true}) but does not propagate the binder's auto-grow limit to it in
+	 * this version (spring-context commit 30bdbb1438, gh-36861, is not present),
+	 * leaving it at {@code Integer.MAX_VALUE}. Without this fallback, arrays and
+	 * collections bound through such an accessor could be grown to any requested
+	 * index, and a self-populating {@code List} could create elements on demand
+	 * up to any requested index.
+	 * <p>A plain DirectFieldAccessor does not auto-grow nested paths by default
+	 * and keeps the unlimited default of a plain accessor. Nested
+	 * DirectFieldAccessors inherit the settings of their parent.
+	 */
+	@Override
+	int getEffectiveAutoGrowCollectionLimit() {
+		int limit = getAutoGrowCollectionLimit();
+		return (isAutoGrowNestedPaths() && limit == Integer.MAX_VALUE ?
+				DEFAULT_EFFECTIVE_AUTO_GROW_COLLECTION_LIMIT : limit);
 	}
 
 	@Override
